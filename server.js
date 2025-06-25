@@ -1,35 +1,44 @@
+// server.js
 const express = require('express');
+const http = require('http');
 const { WebSocketServer } = require('ws');
 
 const app = express();
+const server = http.createServer(app);
+const wss = new WebSocketServer({ noServer: true });
+
 const PORT = process.env.PORT || 10000;
 
-// HTTP endpoint for API
-app.get('/api/status', (req, res) => {
-  res.json({ status: 'garden server is live' });
-});
-
-const server = app.listen(PORT, () =>
-  console.log(`HTTP & WS listening on port ${PORT}`)
+app.get('/api/status', (req, res) =>
+  res.json({ status: 'garden server live' })
 );
 
-// Attach WebSocket server to same port
-const wss = new WebSocketServer({ server });
+// Handle WebSocket upgrades
+server.on('upgrade', (req, socket, head) => {
+  wss.handleUpgrade(req, socket, head, ws => {
+    wss.emit('connection', ws, req);
+  });
+});
 
+// WebSocket logic
 wss.on('connection', ws => {
-  console.log('New WebSocket client connected');
+  console.log('WS client connected');
   ws.send(JSON.stringify({ event: 'welcome', garden: {} }));
 
   ws.on('message', msg => {
     const data = JSON.parse(msg);
-    console.log('Received:', data);
-    // TODO: Game logic: update garden, save in DB, broadcast to others
+    // update game state & broadcast
     wss.clients.forEach(client => {
-      if (client.readyState === ws.OPEN) {
+      if (client.readyState === WebSocket.OPEN) {
         client.send(JSON.stringify({ event: 'gardenUpdate', data }));
       }
     });
   });
 
-  ws.on('close', () => console.log('Client disconnected'));
+  ws.on('close', () => console.log('WS client disconnected'));
 });
+
+// Start HTTP + WS server
+server.listen(PORT, () =>
+  console.log(`Server listening on port ${PORT}`)
+);
